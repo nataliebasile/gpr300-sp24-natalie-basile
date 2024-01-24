@@ -20,9 +20,11 @@ static int getTextureFormat(int numComponents) {
 }
 namespace ew {
 	unsigned int loadTexture(const char* filePath) {
+		//stbi_set_flip_vertically_on_load(true); // Flips texture
 		return loadTexture(filePath, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, true);
 	}
 	unsigned int loadTexture(const char* filePath, int wrapMode, int magFilter, int minFilter, bool mipmap) {
+		//stbi_set_flip_vertically_on_load(true); // Flips texture
 		int width, height, numComponents;
 		unsigned char* data = stbi_load(filePath, &width, &height, &numComponents, 0);
 		if (data == NULL) {

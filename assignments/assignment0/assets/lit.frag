@@ -4,11 +4,13 @@ in Surface {
 	vec3 WorldPos; // Vertex position in world space
 	vec3 WorldNormal; // Vertex normal in world space
 	vec2 TexCoord;
+	mat3 TBN; // TBN matrix
 }fs_in;
 
 out vec4 FragColor; // The color of this fragment
 
 uniform sampler2D _MainTex; // 2D texture sampler
+uniform sampler2D _NormalTex;
 
 uniform vec3 _EyePos;
 uniform vec3 _LightDirection = vec3(0.0, -1.0, 0.0); // Light pointing straight down
@@ -25,7 +27,10 @@ uniform Material _Material;
 
 void main() {
 	// Make sure fragment normal is still length 1 after interpolation
-	vec3 normal = normalize(fs_in.WorldNormal);
+	vec3 normal = texture(_NormalTex, fs_in.TexCoord).rgb;
+	normal = normal * 2.0 - 1.0;
+	normal = normalize(fs_in.TBN * normal);
+
 
 	// Light pointing straight down
 	vec3 toLight = -_LightDirection;

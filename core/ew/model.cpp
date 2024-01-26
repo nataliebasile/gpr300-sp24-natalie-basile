@@ -45,6 +45,9 @@ namespace ew {
 			if (aiMesh->HasNormals()) {
 				vertex.normal = convertAIVec3(aiMesh->mNormals[i]);
 			}
+			if (aiMesh->HasTangentsAndBitangents()) {
+				vertex.tangent = convertAIVec3(aiMesh->mTangents[i]);
+			}
 			if (aiMesh->HasTextureCoords(0)) {
 				vertex.uv = glm::vec2(convertAIVec3(aiMesh->mTextureCoords[0][i]));
 			}

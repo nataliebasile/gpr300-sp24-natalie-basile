@@ -44,11 +44,11 @@ int main() {
 	glEnable(GL_DEPTH_TEST); // Depth testing
 
 	// Textures
-	GLuint brickTexture = ew::loadTexture("assets/Building_Color.png");
-	glBindTextureUnit(0, brickTexture);
+	GLuint buildingTexture = ew::loadTexture("assets/Building_Color.png");
+	GLuint normalTexture = ew::loadTexture("assets/Building_NormalGL.png");
 
 	// Models
-	ew::Model monkeyModel = ew::Model("assets/suzanne.obj");
+	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
 
 	// Transforms
 	ew::Transform monkeyTransform;
@@ -75,7 +75,11 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// MY CODE HERE
-		
+		// 
+		// Binding textures
+		glBindTextureUnit(0, buildingTexture);
+		glBindTextureUnit(1, normalTexture);
+
 		// Camera movement
 		cameraController.move(window, &camera, deltaTime);
 
@@ -85,6 +89,8 @@ int main() {
 		shader.use();
 		shader.setMat4("_Model", monkeyTransform.modelMatrix());
 		shader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		shader.setInt("_MainTex", 0);
+		shader.setInt("_NormalTex", 1);
 		shader.setVec3("_EyePos", camera.position);
 		shader.setFloat("_Material.Ka", material.Ka);
 		shader.setFloat("_Material.Kd", material.Kd);

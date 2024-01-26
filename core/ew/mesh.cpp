@@ -32,9 +32,13 @@ namespace ew {
 			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void*)offsetof(Vertex, normal));
 			glEnableVertexAttribArray(1);
 
-			//UV attribute
-			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void*)(offsetof(Vertex, uv)));
+			// Tangent attribute
+			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void*)offsetof(Vertex, tangent));
 			glEnableVertexAttribArray(2);
+
+			//UV attribute
+			glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void*)(offsetof(Vertex, uv)));
+			glEnableVertexAttribArray(3);
 
 			m_initialized = true;
 		}

@@ -45,8 +45,12 @@ int main() {
 	glCullFace(GL_BACK); // Back face culling
 	glEnable(GL_DEPTH_TEST); // Depth testing
 
+	// Dummy VAO
+	unsigned int dummyVAO;
+	glCreateVertexArrays(1, &dummyVAO);
+
 	// Framebuffers
-	//nb::Framebuffer framebuffer = nb::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
+	nb::Framebuffer framebuffer = nb::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
 	GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
 		printf("\nFramebuffer incomplete %d\n", fboStatus);
@@ -58,12 +62,14 @@ int main() {
 
 	// Models
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
+	
 
 	// Transforms
 	ew::Transform monkeyTransform;
 
 	// Shaders
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 
 	// Camera
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -80,7 +86,8 @@ int main() {
 		prevFrameTime = time;
 
 		//RENDER
-		//glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+		// Bind to framebuffer
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
 		
 		glClearColor(0.6f,0.8f,0.92f,1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -109,6 +116,19 @@ int main() {
 		shader.setFloat("_Material.Shininess", material.Shininess);
 
 		monkeyModel.draw(); // Draws monkey model using current shader
+
+		// Bind back to front buffer (0)
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Use post-processing shader
+		invert.use();
+
+		glBindTextureUnit(0, framebuffer.colorBuffer[0]);
+		glBindVertexArray(dummyVAO);
+
+		// Draw fullscreen quad
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		drawUI();
 

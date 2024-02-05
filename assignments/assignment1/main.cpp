@@ -49,6 +49,11 @@ int main() {
 	unsigned int dummyVAO;
 	glCreateVertexArrays(1, &dummyVAO);
 
+	// Shaders
+	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
+	ew::Shader boxblur = ew::Shader("assets/postprocessing.vert", "assets/boxblur.frag");
+
 	// Framebuffers
 	nb::Framebuffer framebuffer = nb::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
 	GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -66,10 +71,6 @@ int main() {
 
 	// Transforms
 	ew::Transform monkeyTransform;
-
-	// Shaders
-	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
-	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 
 	// Camera
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -122,7 +123,9 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// Use post-processing shader
-		invert.use();
+		boxblur.use();
+		boxblur.setInt("_ColorBuffer", 0);
+		//boxblur.setInt("_BlurAmount", blurAmount);
 
 		glBindTextureUnit(0, framebuffer.colorBuffer[0]);
 		glBindVertexArray(dummyVAO);
@@ -158,6 +161,7 @@ void drawUI() {
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
+	ImGui::SliderFloat ("Blur Amount", &blurAmount, 0, 50);
 	ImGui::End();
 
 	ImGui::Render();

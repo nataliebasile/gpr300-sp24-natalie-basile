@@ -16,6 +16,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <iostream>
+
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
@@ -26,9 +28,8 @@ int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
-float blurAmount = 1;
-
-bool useBoxBlur = true;
+const int numShaders = 5;
+int blurAmount = 2;
 
 ew::Camera camera;
 ew::CameraController cameraController;
@@ -39,6 +40,12 @@ struct Material {
 	float Ks = 0.5;
 	float Shininess = 128;
 }material;
+
+enum PPShaders {
+	noPP, invertPP, boxBlurPP
+}curShader;
+
+void setPPShader(std::vector<ew::Shader> shaders, PPShaders shader);
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -54,9 +61,16 @@ int main() {
 	glCreateVertexArrays(1, &dummyVAO);
 
 	// Shaders
-	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
 	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 	ew::Shader boxblur = ew::Shader("assets/postprocessing.vert", "assets/boxblur.frag");
+	// Create vector of shaders
+	std::vector<ew::Shader> shaders;
+	shaders.reserve(numShaders);
+	shaders.push_back(lit);
+	shaders.push_back(invert);
+	shaders.push_back(boxblur);
+	curShader = PPShaders::boxBlurPP;
 
 	// Framebuffers
 	nb::Framebuffer framebuffer = nb::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
@@ -109,16 +123,16 @@ int main() {
 		// Rotate model around Y axis
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 
-		shader.use();
-		shader.setMat4("_Model", monkeyTransform.modelMatrix());
-		shader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		shader.setInt("_MainTex", 0);
-		shader.setInt("_NormalTex", 1);
-		shader.setVec3("_EyePos", camera.position);
-		shader.setFloat("_Material.Ka", material.Ka);
-		shader.setFloat("_Material.Kd", material.Kd);
-		shader.setFloat("_Material.Ks", material.Ks);
-		shader.setFloat("_Material.Shininess", material.Shininess);
+		lit.use();
+		lit.setMat4("_Model", monkeyTransform.modelMatrix());
+		lit.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		lit.setInt("_MainTex", 0);
+		lit.setInt("_NormalTex", 1);
+		lit.setVec3("_EyePos", camera.position);
+		lit.setFloat("_Material.Ka", material.Ka);
+		lit.setFloat("_Material.Kd", material.Kd);
+		lit.setFloat("_Material.Ks", material.Ks);
+		lit.setFloat("_Material.Shininess", material.Shininess);
 
 		monkeyModel.draw(); // Draws monkey model using current shader
 
@@ -126,10 +140,21 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// Use post-processing shader
-		boxblur.use();
-		boxblur.setInt("_ColorBuffer", 0);
-		boxblur.setInt("_BlurAmount", blurAmount);
+		// Set post-processing shader
+		setPPShader(shaders, curShader);
+
+		// Set variables based on chosen post-processing shader
+		switch (curShader) {
+		case PPShaders::noPP:
+			break;
+		case PPShaders::invertPP:
+			invert.setInt("_ColorBuffer", 0);
+			break;
+		case PPShaders::boxBlurPP:
+			boxblur.setInt("_ColorBuffer", 0);
+			boxblur.setInt("_BlurAmount", blurAmount);
+			break;
+		}
 
 		glBindTextureUnit(0, framebuffer.colorBuffer[0]);
 		glBindVertexArray(dummyVAO);
@@ -168,17 +193,32 @@ void drawUI() {
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
 
-	// Box blur GUI
-	if (ImGui::Checkbox("Box Blur?", &useBoxBlur)) {
-		blurAmount = 0;
+	// Shaders list GUI
+	const char* listbox_shaders[] = { "Invert", "Box Blur" };
+	static int listbox_current = 1;
+	ImGui::ListBox("Shader", &listbox_current, listbox_shaders, IM_ARRAYSIZE(listbox_shaders), 4);
+
+	// Set shader based on list item selected
+	curShader = static_cast<PPShaders>(listbox_current + 1);
+
+	// If box blur shader, show slider for blur amount
+	if (curShader == PPShaders::boxBlurPP) {
+		ImGui::SliderInt("Blur Amount", &blurAmount, 0, 25);
 	}
-	else if (useBoxBlur) {
-		ImGui::SliderFloat("Blur Amount", &blurAmount, 0, 25);
-	}
+
 	ImGui::End();
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+/// <summary>
+/// Sets PP shader based on enumerator in shaders vector
+/// </summary>
+/// <param name="shaders">Shaders vector</param>
+/// <param name="shader">Shader enumerator</param>
+void setPPShader(std::vector<ew::Shader> shaders, PPShaders shader) {
+	shaders[shader].use();
 }
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height)

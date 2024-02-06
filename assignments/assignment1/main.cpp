@@ -26,6 +26,10 @@ int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
+float blurAmount = 1;
+
+bool useBoxBlur = true;
+
 ew::Camera camera;
 ew::CameraController cameraController;
 
@@ -125,7 +129,7 @@ int main() {
 		// Use post-processing shader
 		boxblur.use();
 		boxblur.setInt("_ColorBuffer", 0);
-		//boxblur.setInt("_BlurAmount", blurAmount);
+		boxblur.setInt("_BlurAmount", blurAmount);
 
 		glBindTextureUnit(0, framebuffer.colorBuffer[0]);
 		glBindVertexArray(dummyVAO);
@@ -155,13 +159,22 @@ void drawUI() {
 	if (ImGui::Button("Reset Camera")) {
 		resetCamera(&camera, &cameraController);
 	}
+
+	// Material GUI
 	if (ImGui::CollapsingHeader("Material")) {
 		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
-	ImGui::SliderFloat ("Blur Amount", &blurAmount, 0, 50);
+
+	// Box blur GUI
+	if (ImGui::Checkbox("Box Blur?", &useBoxBlur)) {
+		blurAmount = 0;
+	}
+	else if (useBoxBlur) {
+		ImGui::SliderFloat("Blur Amount", &blurAmount, 0, 25);
+	}
 	ImGui::End();
 
 	ImGui::Render();

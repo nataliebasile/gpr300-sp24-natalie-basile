@@ -62,15 +62,17 @@ int main() {
 
 	// Shaders
 	ew::Shader lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader noPP = ew::Shader("assets/postprocessing.vert", "assets/nopostprocessing.frag");
 	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 	ew::Shader boxblur = ew::Shader("assets/postprocessing.vert", "assets/boxblur.frag");
+
 	// Create vector of shaders
 	std::vector<ew::Shader> shaders;
 	shaders.reserve(numShaders);
-	shaders.push_back(lit);
+	shaders.push_back(noPP);
 	shaders.push_back(invert);
 	shaders.push_back(boxblur);
-	curShader = PPShaders::boxBlurPP;
+	curShader = PPShaders::noPP;
 
 	// Framebuffers
 	nb::Framebuffer framebuffer = nb::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
@@ -146,6 +148,7 @@ int main() {
 		// Set variables based on chosen post-processing shader
 		switch (curShader) {
 		case PPShaders::noPP:
+			noPP.setInt("_ColorBuffer", 0);
 			break;
 		case PPShaders::invertPP:
 			invert.setInt("_ColorBuffer", 0);
@@ -194,12 +197,12 @@ void drawUI() {
 	}
 
 	// Shaders list GUI
-	const char* listbox_shaders[] = { "Invert", "Box Blur" };
-	static int listbox_current = 1;
+	const char* listbox_shaders[] = { "No Post Processing", "Invert", "Box Blur" };
+	static int listbox_current = 0;
 	ImGui::ListBox("Shader", &listbox_current, listbox_shaders, IM_ARRAYSIZE(listbox_shaders), 4);
 
 	// Set shader based on list item selected
-	curShader = static_cast<PPShaders>(listbox_current + 1);
+	curShader = static_cast<PPShaders>(listbox_current);
 
 	// If box blur shader, show slider for blur amount
 	if (curShader == PPShaders::boxBlurPP) {

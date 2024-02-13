@@ -12,6 +12,7 @@
 
 #include <nb/framebuffer.h>
 #include <nb/shadowmap.h>
+#include <nb/light.h>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -38,6 +39,13 @@ nb::ShadowMap shadowMap;
 
 ew::Camera camera;
 ew::CameraController cameraController;
+ew::Camera shadowCamera;
+
+float shadowCamDistance = 10;
+float shadowCamOrthoHeight = 3;
+
+glm::vec3 lightDir{ -1, -0.5, -0.5 }, lightCol{ 1, 1, 1 };
+nb::Light light = nb::createLight(lightDir, lightCol);
 
 struct Material {
 	float Ka = 1.0;
@@ -67,11 +75,12 @@ int main() {
 
 	// Shaders
 	ew::Shader lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader depthOnly = ew::Shader("assets/depthOnly.vert", "assets/depthOnly.frag");
 	ew::Shader noPP = ew::Shader("assets/postprocessing.vert", "assets/nopostprocessing.frag");
 	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 	ew::Shader boxblur = ew::Shader("assets/postprocessing.vert", "assets/boxblur.frag");
 
-	// Create vector of shaders
+	// Create vector of post processing shaders
 	shaders.reserve(numShaders);
 	shaders.push_back(noPP);
 	shaders.push_back(invert);
@@ -112,6 +121,11 @@ int main() {
 	camera.fov = 60.0f; // Vertical field of view, in degrees
 	camera.aspectRatio = (float)screenWidth / screenHeight;
 
+	// Shadow camera
+	shadowCamera.target = glm::vec3(0.0f, 0.0f, 0.0f); // Look at center of the scene
+	shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance; // HAS TO BE A FLOAT OR WILL BREAK???
+	shadowCamera.orthographic = true;
+	shadowCamera.orthoHeight = shadowCamOrthoHeight;
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -125,10 +139,14 @@ int main() {
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		depthOnly.use();
+		depthOnly.setMat4("_ViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
+		
+		depthOnly.setMat4("_Model", monkeyTransform.modelMatrix());
+		monkeyModel.draw();
 
-
-
-
+		depthOnly.setMat4("_Model", planeTransform.modelMatrix());
+		planeMesh.draw();
 
 
 		// Bind to framebuffer
@@ -154,6 +172,8 @@ int main() {
 		lit.setInt("_MainTex", 2);
 		lit.setInt("_NormalTex", 3);
 		lit.setVec3("_EyePos", camera.position);
+		lit.setVec3("_LightDirection", light.direction);
+		lit.setVec3("_LightColor", light.color);
 		lit.setFloat("_Material.Ka", material.Ka);
 		lit.setFloat("_Material.Kd", material.Kd);
 		lit.setFloat("_Material.Ks", material.Ks);
@@ -165,8 +185,6 @@ int main() {
 		lit.setInt("_MainTex", 1);
 		lit.setInt("_NormalTex", 0);
 		planeMesh.draw();
-
-
 
 		// Bind back to front buffer (0)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -226,6 +244,28 @@ void drawUI() {
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
 
+	// Light GUI
+	if (ImGui::CollapsingHeader("Light")) {
+		if (ImGui::ColorEdit3("Color", &lightCol[0]))
+		{
+			light.changeColor(lightCol);
+		}
+		if (ImGui::DragFloat3("Direction", &lightDir[0],0.05)) {
+			light.changeDirection(lightDir);
+			shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance;
+		}
+	}
+
+	// Shadowmap camera GUI
+	if (ImGui::CollapsingHeader("Shadowmap Camera")) {
+		if (ImGui::SliderFloat("Distance", &shadowCamDistance, 0.0f, 50.f)) {
+			shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance;
+		}
+		if (ImGui::SliderFloat("Ortho Height", &shadowCamOrthoHeight, 0.0f, 50.0f)) {
+			shadowCamera.orthoHeight = shadowCamOrthoHeight;
+		}
+	}
+
 	// Shaders list GUI
 	const char* listbox_shaders[] = { "No Post Processing", "Invert", "Box Blur" };
 	static int listbox_current = 0;
@@ -243,7 +283,7 @@ void drawUI() {
 
 	ImGui::End();
 
-	// Shadow map render
+	// Shadow map debug render
 	ImGui::Begin("Shadow Map");
 	ImGui::BeginChild("Shadow Map");
 

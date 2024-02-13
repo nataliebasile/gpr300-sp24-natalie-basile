@@ -13,8 +13,8 @@ uniform sampler2D _MainTex; // 2D texture sampler
 uniform sampler2D _NormalTex;
 
 uniform vec3 _EyePos;
-uniform vec3 _LightDirection = vec3(0.0, -1.0, 0.0); // Light pointing straight down
-uniform vec3 _LightColor = vec3(1.0); // White light
+uniform vec3 _LightDirection; // Light pointing straight down
+uniform vec3 _LightColor; // White light
 uniform vec3 _AmbientColor = vec3(0.3, 0.4, 0.46);
 
 struct Material {
@@ -30,10 +30,11 @@ void main() {
 	vec3 normal = texture(_NormalTex, fs_in.TexCoord).rgb;
 	normal = normal * 2.0 - 1.0;
 	normal = normalize(fs_in.TBN * normal);
+	vec3 lightDir = normalize(_LightDirection);
 
 
 	// Light pointing straight down
-	vec3 toLight = -_LightDirection;
+	vec3 toLight = -lightDir;
 	float diffuseFactor = 0.5 * max(dot(normal, toLight), 0.0);
 
 	// Direction towards eye

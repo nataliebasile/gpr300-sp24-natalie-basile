@@ -8,7 +8,9 @@ layout(location = 3) in vec2 vTexCoord; // Vertex texture coordinate (UV)
 
 uniform mat4 _Model; // Model -> World Matrix
 uniform mat4 _ViewProjection; // Combined View -> Projection Matrix
+uniform mat4 _LightViewProjection; // View + Projection of light source camera
 
+out vec4 LightSpacePos;
 out Surface {
 	vec3 WorldPos; // Vertex position in world space
 	vec3 WorldNormal; // Vertex normal in world space
@@ -20,6 +22,9 @@ out Surface {
 void main() {
 	// Transform vertex position to World Space
 	vs_out.WorldPos = vec3(_Model * vec4(vPos, 1.0));
+
+	// Vertex position in light space to pass to fragment shader
+	LightSpacePos = _LightViewProjection * _Model * vec4(vPos, 1);
 
 	// Transform vertex normal to World Space using Normal Matrix
 	vs_out.WorldNormal = transpose(inverse(mat3(_Model))) * vNormal;

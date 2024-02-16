@@ -43,8 +43,9 @@ ew::Camera shadowCamera;
 
 float shadowCamDistance = 10;
 float shadowCamOrthoHeight = 3;
+float minBias = 0.005, maxBias = 0.015;
 
-glm::vec3 lightDir{ -1, -0.5, -0.5 }, lightCol{ 1, 1, 1 };
+glm::vec3 lightDir{ -0.5, -1, -0.5 }, lightCol{ 1, 1, 1 };
 nb::Light light = nb::createLight(lightDir, lightCol);
 
 struct Material {
@@ -66,7 +67,7 @@ int main() {
 
 	// OpenGL variables
 	glEnable(GL_CULL_FACE);
-	glCullFace(GL_BACK); // Back face culling
+	glCullFace(GL_FRONT); // Back face culling
 	glEnable(GL_DEPTH_TEST); // Depth testing
 
 	// Dummy VAO
@@ -126,6 +127,7 @@ int main() {
 	shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance; // HAS TO BE A FLOAT OR WILL BREAK???
 	shadowCamera.orthographic = true;
 	shadowCamera.orthoHeight = shadowCamOrthoHeight;
+	shadowCamera.aspectRatio = 1;
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -138,6 +140,7 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.sfbo);
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glCullFace(GL_FRONT); // Front face culling
 
 		depthOnly.use();
 		depthOnly.setMat4("_ViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
@@ -153,12 +156,14 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
 		glClearColor(0.6f,0.8f,0.92f,1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glCullFace(GL_BACK); // Back face culling
 
 		// Binding textures
 		glBindTextureUnit(0, defaultNormalTexture);
 		glBindTextureUnit(1, brickTexture);
 		glBindTextureUnit(2, buildingTexture);
 		glBindTextureUnit(3, normalTexture);
+		glBindTextureUnit(4, shadowMap.depthTexture);
 
 		// Camera movement
 		cameraController.move(window, &camera, deltaTime);
@@ -169,8 +174,12 @@ int main() {
 		lit.use();
 		lit.setMat4("_Model", monkeyTransform.modelMatrix());
 		lit.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		lit.setMat4("_LightViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
+		lit.setFloat("_MinBias", minBias);
+		lit.setFloat("_MaxBias", maxBias);
 		lit.setInt("_MainTex", 2);
 		lit.setInt("_NormalTex", 3);
+		lit.setInt("_ShadowMap", 4);
 		lit.setVec3("_EyePos", camera.position);
 		lit.setVec3("_LightDirection", light.direction);
 		lit.setVec3("_LightColor", light.color);
@@ -264,6 +273,8 @@ void drawUI() {
 		if (ImGui::SliderFloat("Ortho Height", &shadowCamOrthoHeight, 0.0f, 50.0f)) {
 			shadowCamera.orthoHeight = shadowCamOrthoHeight;
 		}
+		ImGui::SliderFloat("Min Bias", &minBias, 0.0f, 0.05f);
+		ImGui::SliderFloat("Max Bias", &maxBias, 0.0f, 0.5f);
 	}
 
 	// Shaders list GUI

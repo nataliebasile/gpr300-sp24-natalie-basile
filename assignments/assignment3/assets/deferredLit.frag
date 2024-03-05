@@ -4,20 +4,15 @@ out vec4 FragColor; // The color of this fragment
 
 in vec2 UV;
 
-in vec4 LightSpacePos;
-in Surface {
-	vec3 WorldPos; // Vertex position in world space
-	vec3 WorldNormal; // Vertex normal in world space
-	vec2 TexCoord;
-	mat3 TBN; // TBN matrix
-}fs_in;
-
 uniform float _MinBias;
 uniform float _MaxBias;
 
-uniform sampler2D _MainTex; // 2D texture sampler
-uniform sampler2D _NormalTex;
-uniform sampler2D _ShadowMap;
+uniform layout(binding = 0) sampler2D _gPositions;
+uniform layout(binding = 1) sampler2D _gNormals;
+uniform layout(binding = 2) sampler2D _gAlbedo;
+uniform layout(binding = 3) sampler2D _ShadowMap;
+
+uniform mat4 _LightViewProjection;
 
 uniform vec3 _EyePos;
 uniform vec3 _LightDirection; // Light pointing straight down
@@ -32,26 +27,18 @@ struct Material {
 };
 uniform Material _Material;
 
-uniform layout(binding = 0) sampler2D _gPositions;
-uniform layout(binding = 1) sampler2D _gNormals;
-uniform layout(binding = 2) sampler2D _gAlbedo;
-
 float calcShadow(sampler2D shadowMap, vec4 lightSpacePos);
 vec3 normal;
 vec3 toLight;
 
 void main() {
-	
-	//normal = texture(_gNormals, UV).xyz;
-	//vec3 worldPos = texture(_gPositions, UV).xyz;
-	//vec3 albedo = texture(_gAlbedo, UV).xyz;
+	// Sample surface properties from gBuffers
+	normal = texture(_gNormals, UV).xyz;
+	vec3 worldPos = texture(_gPositions, UV).xyz;
+	vec3 albedo = texture(_gAlbedo, UV).xyz;
 
-	//FragColor = vec4(albedo * lightColor, 1.0);
-	
-	// Make sure fragment normal is still length 1 after interpolation
-	normal = texture(_NormalTex, fs_in.TexCoord).rgb;
-	normal = normal * 2.0 - 1.0;
-	normal = normalize(fs_in.TBN * normal);
+	// Calculate lightSpacePos and lightDir
+	vec4 lightSpacePos = _LightViewProjection * vec4(worldPos, 1);
 	vec3 lightDir = normalize(_LightDirection);
 
 	// Light pointing straight down
@@ -59,7 +46,7 @@ void main() {
 	float diffuseFactor = 0.5 * max(dot(normal, toLight), 0.0);
 
 	// Direction towards eye
-	vec3 toEye = normalize(_EyePos - fs_in.WorldPos);
+	vec3 toEye = normalize(_EyePos - worldPos);
 
 	// Blinn-phong uses half angle
 	vec3 h = normalize(toLight + toEye);
@@ -69,14 +56,17 @@ void main() {
 	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * _LightColor;
 	
 	// 1: in shadow, 0: out of shadow
-	float shadow = calcShadow(_ShadowMap, LightSpacePos);
+	float shadow = calcShadow(_ShadowMap, lightSpacePos);
 	lightColor *= (1.0 - shadow);
 
 	// Add some ambient light
 	lightColor += _AmbientColor * _Material.Ka;
 
-	vec3 objectColor = texture(_MainTex, fs_in.TexCoord).rgb;
-	FragColor = vec4(objectColor * lightColor, 1.0);
+	//vec3 objectColor = texture(_MainTex, fs_in.TexCoord).rgb;
+	//vec3 objectColor = texture(albedo, UV).xyz;
+	//FragColor = vec4(objectColor * lightColor, 1.0);
+	FragColor = vec4(albedo * lightColor, 1.0);
+
 }
 
 float calcShadow(sampler2D shadowMap, vec4 lightSpacePos) {

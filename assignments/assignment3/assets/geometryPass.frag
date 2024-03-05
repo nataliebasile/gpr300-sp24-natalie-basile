@@ -26,5 +26,4 @@ void main() {
 
 	gNormal = normalize(fs_in.WorldNormal);
 	gAlbedo = texture(_MainTex, fs_in.TexCoord).rgb;
-
 }

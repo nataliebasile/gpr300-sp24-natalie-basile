@@ -25,29 +25,37 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
 
-//Global state
+// Global state
 int screenWidth = 1080;
 int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
+// Shaders
 std::vector<ew::Shader> shaders;
 const int numShaders = 5;
 int blurAmount = 2;
+
+// Framebuffers
 nb::Framebuffer framebuffer;
 nb::Framebuffer gBuffer;
 nb::ShadowMap shadowMap;
 
+// Camera
 ew::Camera camera;
 ew::CameraController cameraController;
 ew::Camera shadowCamera;
 
+// Shadow
 float shadowCamDistance = 10;
 float shadowCamOrthoHeight = 3;
 float minBias = 0.005, maxBias = 0.015;
 
+// Lighting
 glm::vec3 lightDir{ -0.5, -1, -0.5 }, lightCol{ 1, 1, 1 };
 nb::Light light = nb::createLight(lightDir, lightCol);
+const int MAX_POINT_LIGHTS = 64;
+PointLight pointLights[MAX_POINT_LIGHTS];
 
 struct Material {
 	float Ka = 1.0;
@@ -55,6 +63,12 @@ struct Material {
 	float Ks = 0.5;
 	float Shininess = 128;
 }material;
+
+struct PointLight {
+	glm::vec3 position;
+	float radius;
+	glm::vec4 color;
+};
 
 enum PPShaders {
 	noPP, invertPP, boxBlurPP
@@ -77,6 +91,7 @@ int main() {
 
 	// Shaders
 	ew::Shader lit = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader defLit = ew::Shader("assets/postprocessing.vert", "assets/deferredLit.frag");
 	ew::Shader gBufferShader = ew::Shader("assets/geometryPass.vert", "assets/geometryPass.frag");
 	ew::Shader depthOnly = ew::Shader("assets/depthOnly.vert", "assets/depthOnly.frag");
 	ew::Shader noPP = ew::Shader("assets/postprocessing.vert", "assets/nopostprocessing.frag");
@@ -141,109 +156,119 @@ int main() {
 		deltaTime = time - prevFrameTime;
 		prevFrameTime = time;
 
-		// Bind to Gbuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, gBuffer.fbo);
-		glViewport(0, 0, gBuffer.width, gBuffer.height);
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glCullFace(GL_BACK); // Front face culling
+		// === GEOMETRY PASS ===
+		{
+			// Bind to Gbuffer
+			glBindFramebuffer(GL_FRAMEBUFFER, gBuffer.fbo);
+			glViewport(0, 0, gBuffer.width, gBuffer.height);
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glCullFace(GL_BACK); // Front face culling
 
-		gBufferShader.use();
-		gBufferShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+			glBindTextureUnit(0, defaultNormalTexture);
+			glBindTextureUnit(1, brickTexture);
+			glBindTextureUnit(2, buildingTexture);
+			glBindTextureUnit(3, normalTexture);
 
-		gBufferShader.setInt("_MainTex", 2);
-		gBufferShader.setInt("_NormalTex", 3);
-		gBufferShader.setMat4("_Model", monkeyTransform.modelMatrix());
-		monkeyModel.draw();
+			gBufferShader.use();
+			gBufferShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 
-		gBufferShader.setInt("_MainTex", 1);
-		gBufferShader.setInt("_NormalTex", 0);
-		gBufferShader.setMat4("_Model", planeTransform.modelMatrix());
-		planeMesh.draw();
+			gBufferShader.setInt("_MainTex", 2);
+			gBufferShader.setInt("_NormalTex", 3);
+			gBufferShader.setMat4("_Model", monkeyTransform.modelMatrix());
+			monkeyModel.draw();
 
-
-		// Bind to shadow framebuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.sfbo);
-		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glCullFace(GL_FRONT); // Front face culling
-
-		depthOnly.use();
-		depthOnly.setMat4("_ViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
-
-		depthOnly.setMat4("_Model", monkeyTransform.modelMatrix());
-		monkeyModel.draw();
-
-		depthOnly.setMat4("_Model", planeTransform.modelMatrix());
-		planeMesh.draw();
-
-
-
-		// Bind to framebuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
-		glClearColor(0.6f,0.8f,0.92f,1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glCullFace(GL_BACK); // Back face culling
-
-		// Binding textures
-		glBindTextureUnit(0, defaultNormalTexture);
-		glBindTextureUnit(1, brickTexture);
-		glBindTextureUnit(2, buildingTexture);
-		glBindTextureUnit(3, normalTexture);
-		glBindTextureUnit(4, shadowMap.depthTexture);
-
-		// Camera movement
-		cameraController.move(window, &camera, deltaTime);
-
-		// Rotate model around Y axis
-		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
-
-		lit.use();
-		lit.setMat4("_Model", monkeyTransform.modelMatrix());
-		lit.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
-		lit.setMat4("_LightViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
-		lit.setFloat("_MinBias", minBias);
-		lit.setFloat("_MaxBias", maxBias);
-		lit.setInt("_MainTex", 2);
-		lit.setInt("_NormalTex", 3);
-		lit.setInt("_ShadowMap", 4);
-		lit.setVec3("_EyePos", camera.position);
-		lit.setVec3("_LightDirection", light.direction);
-		lit.setVec3("_LightColor", light.color);
-		lit.setFloat("_Material.Ka", material.Ka);
-		lit.setFloat("_Material.Kd", material.Kd);
-		lit.setFloat("_Material.Ks", material.Ks);
-		lit.setFloat("_Material.Shininess", material.Shininess);
-
-		monkeyModel.draw(); // Draws monkey model using current shader
-
-		lit.setMat4("_Model", planeTransform.modelMatrix());
-		lit.setInt("_MainTex", 1);
-		lit.setInt("_NormalTex", 0);
-		planeMesh.draw();
-
-		// Bind back to front buffer (0)
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		// Set post-processing shader
-		setPPShader(shaders, curShader);
-
-		// Set variables based on chosen post-processing shader
-		switch (curShader) {
-		case PPShaders::noPP:
-			noPP.setInt("_ColorBuffer", 0);
-			break;
-		case PPShaders::invertPP:
-			invert.setInt("_ColorBuffer", 0);
-			break;
-		case PPShaders::boxBlurPP:
-			boxblur.setInt("_ColorBuffer", 0);
-			boxblur.setInt("_BlurAmount", blurAmount);
-			break;
+			gBufferShader.setInt("_MainTex", 1);
+			gBufferShader.setInt("_NormalTex", 0);
+			gBufferShader.setMat4("_Model", planeTransform.modelMatrix());
+			planeMesh.draw();
 		}
 
-		glBindTextureUnit(0, framebuffer.colorBuffers[0]);
+		// === SHADOWMAP PASS ===
+		{
+			// Bind to shadow framebuffer
+			glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.sfbo);
+			glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glCullFace(GL_FRONT); // Front face culling
+
+			depthOnly.use();
+			depthOnly.setMat4("_ViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
+
+			depthOnly.setMat4("_Model", monkeyTransform.modelMatrix());
+			monkeyModel.draw();
+
+			depthOnly.setMat4("_Model", planeTransform.modelMatrix());
+			planeMesh.draw();
+		}
+
+		// === LIGHTING PASS ===
+		{
+			// Bind to framebuffer
+			glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+			glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glCullFace(GL_BACK); // Back face culling
+
+			// Binding textures
+			glBindTextureUnit(0, gBuffer.colorBuffers[0]);
+			glBindTextureUnit(1, gBuffer.colorBuffers[1]);
+			glBindTextureUnit(2, gBuffer.colorBuffers[2]);
+			glBindTextureUnit(3, shadowMap.depthTexture);
+
+			// Camera movement
+			cameraController.move(window, &camera, deltaTime);
+
+			// Rotate model around Y axis
+			monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
+
+			defLit.use();
+			defLit.setMat4("_LightViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
+			defLit.setFloat("_MinBias", minBias);
+			defLit.setFloat("_MaxBias", maxBias);
+
+			defLit.setInt("_gPositions", 0);
+			defLit.setInt("_gNormals", 1);
+			defLit.setInt("_gAlbedo", 2);
+			defLit.setInt("_ShadowMap", 3);
+
+			defLit.setVec3("_EyePos", camera.position);
+			defLit.setVec3("_LightDirection", light.direction);
+			defLit.setVec3("_LightColor", light.color);
+			defLit.setFloat("_Material.Ka", material.Ka);
+			defLit.setFloat("_Material.Kd", material.Kd);
+			defLit.setFloat("_Material.Ks", material.Ks);
+			defLit.setFloat("_Material.Shininess", material.Shininess);
+
+			glBindVertexArray(dummyVAO);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		// === POST-PROCESSING PASS ===
+		{
+			glBindTextureUnit(0, framebuffer.fbo);
+			// Bind back to front buffer (0)
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			// Set post-processing shader
+			setPPShader(shaders, curShader);
+
+			// Set variables based on chosen post-processing shader
+			switch (curShader) {
+			case PPShaders::noPP:
+				noPP.setInt("_ColorBuffer", 0);
+				break;
+			case PPShaders::invertPP:
+				invert.setInt("_ColorBuffer", 0);
+				break;
+			case PPShaders::boxBlurPP:
+				boxblur.setInt("_ColorBuffer", 0);
+				boxblur.setInt("_BlurAmount", blurAmount);
+				break;
+			}
+		}
+
 		glBindVertexArray(dummyVAO);
 
 		// Draw fullscreen quad

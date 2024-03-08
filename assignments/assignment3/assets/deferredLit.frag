@@ -12,11 +12,25 @@ uniform layout(binding = 1) sampler2D _gNormals;
 uniform layout(binding = 2) sampler2D _gAlbedo;
 uniform layout(binding = 3) sampler2D _ShadowMap;
 
+struct DirLight {
+	vec3 dir; // _LightDirection
+	vec3 color; // _LightColor
+};
+uniform DirLight _MainLight;
+
+struct PointLight {
+	vec3 position;
+	float radius;
+	vec3 color;
+};
+#define MAX_POINT_LIGHTS 64
+uniform PointLight _PointLights[MAX_POINT_LIGHTS];
+
 uniform mat4 _LightViewProjection;
 
 uniform vec3 _EyePos;
-uniform vec3 _LightDirection; // Light pointing straight down
-uniform vec3 _LightColor; // White light
+//uniform vec3 _LightDirection; // Light pointing straight down
+//uniform vec3 _LightColor; // White light
 uniform vec3 _AmbientColor = vec3(0.3, 0.4, 0.46);
 
 struct Material {
@@ -28,8 +42,12 @@ struct Material {
 uniform Material _Material;
 
 float calcShadow(sampler2D shadowMap, vec4 lightSpacePos);
-vec3 normal;
-vec3 toLight;
+vec3 calcDirectionalLight( DirLight _MainLight, vec3 normal, vec3 pos );
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 pos);
+float attenuateLinear(float d, float radius);
+
+vec3 normal, toLight;
+float diffuseFactor, specularFactor;
 
 void main() {
 	// Sample surface properties from gBuffers
@@ -37,23 +55,64 @@ void main() {
 	vec3 worldPos = texture(_gPositions, UV).xyz;
 	vec3 albedo = texture(_gAlbedo, UV).xyz;
 
-	// Calculate lightSpacePos and lightDir
-	vec4 lightSpacePos = _LightViewProjection * vec4(worldPos, 1);
-	vec3 lightDir = normalize(_LightDirection);
+	vec3 totalLight = vec3(0);
 
-	// Light pointing straight down
-	toLight = -lightDir;
-	float diffuseFactor = 0.5 * max(dot(normal, toLight), 0.0);
+	totalLight += calcDirectionalLight(_MainLight, normal, worldPos);
+
+
+
+
+
+
+
+	FragColor = vec4(albedo * totalLight, 1.0);
+
+}
+
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 pos) {
+	// Direction toward light position
+	vec3 diff = light.position - pos;
+	toLight = normalize(diff);
+
+	diffuseFactor = 0.5 * max(dot(normal, toLight), 0.0);
 
 	// Direction towards eye
-	vec3 toEye = normalize(_EyePos - worldPos);
+	vec3 toEye = normalize(_EyePos - pos);
 
 	// Blinn-phong uses half angle
 	vec3 h = normalize(toLight + toEye);
-	float specularFactor = pow(max(dot(normal,h), 0.0), _Material.Shininess);
+	specularFactor = pow(max(dot(normal,h), 0.0), _Material.Shininess);
+
+	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * light.color;
+
+	float d = length(diff);
+	lightColor *= attenuateLinear(d, light.radius);
+
+	return lightColor;
+}
+
+float attenuateLinear(float d, float radius) {
+	return clamp((radius - d)/radius, 0.0f, 1.0f);
+}
+
+vec3 calcDirectionalLight( DirLight _MainLight, vec3 normal, vec3 pos ) {
+	// Calculate lightSpacePos and lightDir
+	vec4 lightSpacePos = _LightViewProjection * vec4(pos, 1);
+	vec3 lightDir = normalize(_MainLight.dir);
+
+	// Light pointing straight down
+	toLight = -lightDir;
+	diffuseFactor = 0.5 * max(dot(normal, toLight), 0.0);
+
+	// Direction towards eye
+	vec3 toEye = normalize(_EyePos - pos);
+
+	// Blinn-phong uses half angle
+	vec3 h = normalize(toLight + toEye);
+	specularFactor = pow(max(dot(normal,h), 0.0), _Material.Shininess);
 
 	// Combination of specular and diffuse reflection
-	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * _LightColor;
+	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * _MainLight.color;
 	
 	// 1: in shadow, 0: out of shadow
 	float shadow = calcShadow(_ShadowMap, lightSpacePos);
@@ -62,11 +121,11 @@ void main() {
 	// Add some ambient light
 	lightColor += _AmbientColor * _Material.Ka;
 
+	return lightColor;
 	//vec3 objectColor = texture(_MainTex, fs_in.TexCoord).rgb;
 	//vec3 objectColor = texture(albedo, UV).xyz;
 	//FragColor = vec4(objectColor * lightColor, 1.0);
-	FragColor = vec4(albedo * lightColor, 1.0);
-
+	//FragColor = vec4(albedo * lightColor, 1.0);
 }
 
 float calcShadow(sampler2D shadowMap, vec4 lightSpacePos) {

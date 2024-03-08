@@ -51,11 +51,23 @@ float shadowCamDistance = 10;
 float shadowCamOrthoHeight = 3;
 float minBias = 0.005, maxBias = 0.015;
 
+struct PointLight {
+	glm::vec3 position;
+	float radius;
+	glm::vec4 color;
+};
+
 // Lighting
 glm::vec3 lightDir{ -0.5, -1, -0.5 }, lightCol{ 1, 1, 1 };
 nb::Light light = nb::createLight(lightDir, lightCol);
 const int MAX_POINT_LIGHTS = 64;
-PointLight pointLights[MAX_POINT_LIGHTS];
+PointLight pointLights[MAX_POINT_LIGHTS]{
+	PointLight{ {0, 5, 0}, 5, {0, 0.5, 0.5, 1} },
+	PointLight{ {5, 5, 5}, 5, {0.5, 0, 0.5, 1} },
+	PointLight{ {5, 5, -5}, 5, {0.5, 0.5, 0, 1} },
+	PointLight{ {-5, 5, -5}, 5, {0, 0.5, 0, 1} },
+	PointLight{ {-5, 5, 5}, 5, {0.5, 0, 0, 1} }
+};
 
 struct Material {
 	float Ka = 1.0;
@@ -64,11 +76,7 @@ struct Material {
 	float Shininess = 128;
 }material;
 
-struct PointLight {
-	glm::vec3 position;
-	float radius;
-	glm::vec4 color;
-};
+
 
 enum PPShaders {
 	noPP, invertPP, boxBlurPP

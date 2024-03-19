@@ -21,7 +21,7 @@ uniform DirLight _MainLight;
 struct PointLight {
 	vec3 position;
 	float radius;
-	vec3 color;
+	vec4 color;
 };
 #define MAX_POINT_LIGHTS 64
 uniform PointLight _PointLights[MAX_POINT_LIGHTS];
@@ -45,6 +45,7 @@ float calcShadow(sampler2D shadowMap, vec4 lightSpacePos);
 vec3 calcDirectionalLight( DirLight _MainLight, vec3 normal, vec3 pos );
 vec3 calcPointLight(PointLight light, vec3 normal, vec3 pos);
 float attenuateLinear(float d, float radius);
+float attenuateExponential(float d, float radius);
 
 vec3 normal, toLight;
 float diffuseFactor, specularFactor;
@@ -59,11 +60,10 @@ void main() {
 
 	totalLight += calcDirectionalLight(_MainLight, normal, worldPos);
 
-
-
-
-
-
+	// Get color for each light
+	for (int i = 0; i < MAX_POINT_LIGHTS; i++) {
+		totalLight += calcPointLight(_PointLights[i], normal, worldPos);
+	}
 
 	FragColor = vec4(albedo * totalLight, 1.0);
 
@@ -83,7 +83,7 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 pos) {
 	vec3 h = normalize(toLight + toEye);
 	specularFactor = pow(max(dot(normal,h), 0.0), _Material.Shininess);
 
-	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * light.color;
+	vec3 lightColor = (_Material.Kd * diffuseFactor + _Material.Ks * specularFactor) * light.color.rgb;
 
 	float d = length(diff);
 	lightColor *= attenuateLinear(d, light.radius);
@@ -92,7 +92,12 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 pos) {
 }
 
 float attenuateLinear(float d, float radius) {
-	return clamp((radius - d)/radius, 0.0f, 1.0f);
+	return clamp((radius - d)/radius, 0.0, 1.0);
+}
+
+float attenuateExponential(float d, float radius) {
+	float i = clamp(1.0 - pow(d/radius, 4.0), 0.0, 1.0);
+	return i * i;
 }
 
 vec3 calcDirectionalLight( DirLight _MainLight, vec3 normal, vec3 pos ) {

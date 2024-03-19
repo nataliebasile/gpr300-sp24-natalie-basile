@@ -29,6 +29,7 @@ namespace nb {
 
 		return fb;
 	}
+
 	Framebuffer createGBuffer(unsigned int width, unsigned int height) {
 		Framebuffer gb;
 		gb.width = width;

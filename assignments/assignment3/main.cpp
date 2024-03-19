@@ -51,23 +51,19 @@ float shadowCamDistance = 10;
 float shadowCamOrthoHeight = 3;
 float minBias = 0.005, maxBias = 0.015;
 
+// Lighting
 struct PointLight {
 	glm::vec3 position;
-	float radius;
-	glm::vec4 color;
+	float radius = 15;
+	glm::vec4 color = { (double)rand() / RAND_MAX, (double)rand() / RAND_MAX, (double)rand() / RAND_MAX, 1.0f};
 };
-
-// Lighting
 glm::vec3 lightDir{ -0.5, -1, -0.5 }, lightCol{ 1, 1, 1 };
-nb::Light light = nb::createLight(lightDir, lightCol);
+nb::Light mainLight = nb::createLight(lightDir, lightCol);
+float pointLightDist = 2.0f;
 const int MAX_POINT_LIGHTS = 64;
-PointLight pointLights[MAX_POINT_LIGHTS]{
-	PointLight{ {0, 5, 0}, 5, {0, 0.5, 0.5, 1} },
-	PointLight{ {5, 5, 5}, 5, {0.5, 0, 0.5, 1} },
-	PointLight{ {5, 5, -5}, 5, {0.5, 0.5, 0, 1} },
-	PointLight{ {-5, 5, -5}, 5, {0, 0.5, 0, 1} },
-	PointLight{ {-5, 5, 5}, 5, {0.5, 0, 0, 1} }
-};
+
+PointLight pointLights[MAX_POINT_LIGHTS];
+int numPointLights = 64;
 
 struct Material {
 	float Ka = 1.0;
@@ -102,6 +98,7 @@ int main() {
 	ew::Shader defLit = ew::Shader("assets/postprocessing.vert", "assets/deferredLit.frag");
 	ew::Shader gBufferShader = ew::Shader("assets/geometryPass.vert", "assets/geometryPass.frag");
 	ew::Shader depthOnly = ew::Shader("assets/depthOnly.vert", "assets/depthOnly.frag");
+	ew::Shader lightOrb = ew::Shader("assets/lightOrb.vert", "assets/lightOrb.frag");
 	ew::Shader noPP = ew::Shader("assets/postprocessing.vert", "assets/nopostprocessing.frag");
 	ew::Shader invert = ew::Shader("assets/postprocessing.vert", "assets/invert.frag");
 	ew::Shader boxblur = ew::Shader("assets/postprocessing.vert", "assets/boxblur.frag");
@@ -138,11 +135,20 @@ int main() {
 	// Models & Meshes
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
 	ew::Mesh planeMesh = ew::Mesh(ew::createPlane(10, 10, 5));
+	ew::Mesh sphereMesh = ew::Mesh(ew::createSphere(1.0f, 8));
 
 	// Transforms
 	ew::Transform monkeyTransform;
 	ew::Transform planeTransform;
 	planeTransform.position = glm::vec3(0, -2, 0);
+
+	// Point lights
+	for (int i = 0; i < numPointLights; i++) {
+		float ang = 360.0f / numPointLights;
+		float theta = ang * i;
+
+		pointLights[i].position = { cos(theta) * pointLightDist, 1, sin(theta) * pointLightDist };
+	}
 
 	// Camera
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -152,7 +158,7 @@ int main() {
 
 	// Shadow camera
 	shadowCamera.target = glm::vec3(0.0f, 0.0f, 0.0f); // Look at center of the scene
-	shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance; // HAS TO BE A FLOAT OR WILL BREAK???
+	shadowCamera.position = shadowCamera.target - mainLight.direction * shadowCamDistance; // HAS TO BE A FLOAT OR WILL BREAK???
 	shadowCamera.orthographic = true;
 	shadowCamera.orthoHeight = shadowCamOrthoHeight;
 	shadowCamera.aspectRatio = 1;
@@ -190,6 +196,7 @@ int main() {
 			gBufferShader.setInt("_NormalTex", 0);
 			gBufferShader.setMat4("_Model", planeTransform.modelMatrix());
 			planeMesh.draw();
+
 		}
 
 		// === SHADOWMAP PASS ===
@@ -231,6 +238,15 @@ int main() {
 			monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 
 			defLit.use();
+			// Set each point light as uniform
+			for (int i = 0; i < numPointLights; i++) {
+				std::string prefix = "_PointLights[" + std::to_string(i) + "].";
+				defLit.setVec3(prefix + "position", pointLights[i].position);
+				defLit.setFloat(prefix + "radius", pointLights[i].radius);
+				defLit.setVec4(prefix + "color", pointLights[i].color);
+			}
+			defLit.setVec3("_MainLight.dir", mainLight.direction);
+			defLit.setVec3("_MainLight.color", mainLight.color);
 			defLit.setMat4("_LightViewProjection", shadowCamera.projectionMatrix() * shadowCamera.viewMatrix());
 			defLit.setFloat("_MinBias", minBias);
 			defLit.setFloat("_MaxBias", maxBias);
@@ -241,8 +257,6 @@ int main() {
 			defLit.setInt("_ShadowMap", 3);
 
 			defLit.setVec3("_EyePos", camera.position);
-			defLit.setVec3("_LightDirection", light.direction);
-			defLit.setVec3("_LightColor", light.color);
 			defLit.setFloat("_Material.Ka", material.Ka);
 			defLit.setFloat("_Material.Kd", material.Kd);
 			defLit.setFloat("_Material.Ks", material.Ks);
@@ -250,6 +264,27 @@ int main() {
 
 			glBindVertexArray(dummyVAO);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		// === LIGHT ORB PASS ===
+		{
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer.fbo);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer.fbo);
+			glBlitFramebuffer(0, 0, screenWidth, screenHeight,
+				0, 0, screenWidth, screenHeight,
+				GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
+			lightOrb.use();
+			lightOrb.setMat4("_ViewProjection", camera.projectionMatrix()* camera.viewMatrix());
+			for (int i = 0; i < numPointLights; i++) {
+				glm::mat4 orb = glm::mat4(1.0f);
+				orb = glm::translate(orb, pointLights[i].position);
+				orb = glm::scale(orb, glm::vec3(0.2f));
+
+				lightOrb.setMat4("_Model", orb);
+				lightOrb.setVec3("_Color", pointLights[i].color);
+				sphereMesh.draw();
+			}
 		}
 
 		// === POST-PROCESSING PASS ===
@@ -317,18 +352,19 @@ void drawUI() {
 	if (ImGui::CollapsingHeader("Light")) {
 		if (ImGui::ColorEdit3("Color", &lightCol[0]))
 		{
-			light.changeColor(lightCol);
+			mainLight.changeColor(lightCol);
 		}
 		if (ImGui::DragFloat3("Direction", &lightDir[0],0.05)) {
-			light.changeDirection(lightDir);
-			shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance;
+			mainLight.changeDirection(lightDir);
+			shadowCamera.position = shadowCamera.target - mainLight.direction * shadowCamDistance;
 		}
+		ImGui::SliderInt("Num Point Lights", &numPointLights, 4.0, 64.0);
 	}
 
 	// Shadowmap camera GUI
 	if (ImGui::CollapsingHeader("Shadowmap Camera")) {
 		if (ImGui::SliderFloat("Distance", &shadowCamDistance, 0.0f, 50.f)) {
-			shadowCamera.position = shadowCamera.target - light.direction * shadowCamDistance;
+			shadowCamera.position = shadowCamera.target - mainLight.direction * shadowCamDistance;
 		}
 		if (ImGui::SliderFloat("Ortho Height", &shadowCamOrthoHeight, 0.0f, 50.0f)) {
 			shadowCamera.orthoHeight = shadowCamOrthoHeight;

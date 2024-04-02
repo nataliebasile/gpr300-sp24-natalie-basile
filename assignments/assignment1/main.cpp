@@ -159,7 +159,7 @@ int main() {
 			break;
 		}
 
-		glBindTextureUnit(0, framebuffer.colorBuffer[0]);
+		glBindTextureUnit(0, framebuffer.colorBuffers[0]);
 		glBindVertexArray(dummyVAO);
 
 		// Draw fullscreen quad

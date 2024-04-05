@@ -10,6 +10,7 @@
 #include <ew/texture.h>
 
 #include <nb/framebuffer.h>
+#include <nb/skeleton.h>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -89,8 +90,41 @@ int main() {
 	ew::Model monkeyModel = ew::Model("assets/suzanne.fbx");
 	
 
-	// Transforms
-	ew::Transform monkeyTransform;
+	// Nodes
+	//ew::Transform monkeyTransform;
+	nb::Node monkeyTorso;
+	nb::Node monkeyHead{ glm::vec3(0.0f, 1.4f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f, 0.5f, 0.5f) };
+	nb::Node monkeyRShoulder{ glm::vec3(-1.2, 0.0, 0.0f), glm::quat(1.0f, 0.0f, -0.7f, 0.0f), glm::vec3(0.35f, 0.35f, 0.35f) };
+	nb::Node monkeyRElbow{ glm::vec3(-1.2, -0.5, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 0.2f) };
+	nb::Node monkeyRWrist{ glm::vec3(-1.2, -1.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 0.2f) };
+	nb::Node monkeyLShoulder{ glm::vec3(1.2, 0.0, 0.0f), glm::quat(1.0f, 0.0f, 0.7f, 0.0f), glm::vec3(0.35f, 0.35f, 0.35f) };
+	nb::Node monkeyLElbow{ glm::vec3(1.2, -0.5, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 0.2f) };
+	nb::Node monkeyLWrist{ glm::vec3(1.2, -1.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 0.2f) };
+
+	nb::Skeleton monkeySkeleton;
+
+	monkeyTorso.children = { &monkeyHead, &monkeyRShoulder, &monkeyLShoulder };
+
+	monkeyHead.parent = &monkeyTorso;
+
+	monkeyRShoulder.parent = &monkeyTorso;
+	monkeyRShoulder.children = { &monkeyRElbow };
+
+	monkeyRElbow.parent = &monkeyRShoulder;
+	monkeyRElbow.children = { &monkeyRWrist };
+
+	monkeyRWrist.parent = &monkeyRElbow;
+
+	monkeyLShoulder.parent = &monkeyTorso;
+	monkeyLShoulder.children = { &monkeyLElbow };
+
+	monkeyLElbow.parent = &monkeyLShoulder;
+	monkeyLElbow.children = { &monkeyLWrist };
+
+	monkeyLWrist.parent = &monkeyLElbow;
+
+	monkeySkeleton.skeleton = { &monkeyTorso, &monkeyHead, &monkeyRShoulder, &monkeyRElbow, &monkeyRWrist, &monkeyLShoulder, &monkeyLElbow, &monkeyLWrist };
+
 
 	// Camera
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -123,10 +157,10 @@ int main() {
 		cameraController.move(window, &camera, deltaTime);
 
 		// Rotate model around Y axis
-		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
+		//monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 
 		lit.use();
-		lit.setMat4("_Model", monkeyTransform.modelMatrix());
+		lit.setMat4("_Model", monkeyTorso.localTransform());
 		lit.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 		lit.setInt("_MainTex", 0);
 		lit.setInt("_NormalTex", 1);
@@ -136,7 +170,12 @@ int main() {
 		lit.setFloat("_Material.Ks", material.Ks);
 		lit.setFloat("_Material.Shininess", material.Shininess);
 
-		monkeyModel.draw(); // Draws monkey model using current shader
+		for (int i = 0; i < monkeySkeleton.skeleton.size(); i++) {
+			nb::SolveFKRecursive(monkeySkeleton.skeleton[i]);
+			lit.setMat4("_Model", monkeySkeleton.skeleton[i]->localTransform());
+			monkeyModel.draw(); // Draws monkey model using current shader and transform
+		}
+
 
 		// Bind back to front buffer (0)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
